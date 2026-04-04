@@ -4,18 +4,11 @@ import { checkUser } from "@/lib/checkUser";
 import { GoogleGenerativeAI } from "@google/generative-ai";
 import { freeMealRecommendations, proTierLimit } from "@/lib/arcjet";
 import { request } from "@arcjet/next";
-import { headers } from "next/headers";
+import connectDB from "@/lib/db/mongodb";
+import { Recipe, SavedRecipe, PantryItem, User } from "@/lib/db/models";
 
 const GEMINI_API_KEY = process.env.GEMINI_API_KEY;
 const UNSPLASH_ACCESS_KEY = process.env.UNSPLASH_ACCESS_KEY;
-
-// Helper to get base URL for API calls
-async function getBaseUrl() {
-  const headersList = await headers();
-  const host = headersList.get("host");
-  const protocol = process.env.NODE_ENV === "development" ? "http" : "https";
-  return `${protocol}://${host}`;
-}
 
 const genAI = new GoogleGenerativeAI(GEMINI_API_KEY);
 
@@ -32,7 +25,7 @@ function normalizeTitle(title) {
 async function fetchRecipeImage(recipeName) {
   try {
     if (!UNSPLASH_ACCESS_KEY) {
-      console.warn("⚠️ UNSPLASH_ACCESS_KEY not set, skipping image fetch");
+      console.warn("UNSPLASH_ACCESS_KEY not set, skipping image fetch");
       return "";
     }
 
@@ -49,7 +42,7 @@ async function fetchRecipeImage(recipeName) {
     );
 
     if (!response.ok) {
-      console.error("❌ Unsplash API error:", response.statusText);
+      console.error("Unsplash API error:", response.statusText);
       return "";
     }
 
@@ -57,14 +50,14 @@ async function fetchRecipeImage(recipeName) {
 
     if (data.results && data.results.length > 0) {
       const photo = data.results[0];
-      console.log("✅ Found Unsplash image:", photo.urls.regular);
+      console.log("Found Unsplash image:", photo.urls.regular);
       return photo.urls.regular;
     }
 
-    console.log("ℹ️ No Unsplash image found for:", recipeName);
+    console.log("No Unsplash image found for:", recipeName);
     return "";
   } catch (error) {
-    console.error("❌ Error fetching Unsplash image:", error);
+    console.error("Error fetching Unsplash image:", error);
     return "";
   }
 }
@@ -84,55 +77,46 @@ export async function getOrGenerateRecipe(formData) {
 
     // Normalize the title (e.g., "apple cake" → "Apple Cake")
     const normalizedTitle = normalizeTitle(recipeName);
-    console.log("🔍 Searching for recipe:", normalizedTitle);
+    console.log("Searching for recipe:", normalizedTitle);
 
     const isPro = user.subscriptionTier === "pro";
 
-    const baseUrl = await getBaseUrl();
+    // Connect to database
+    await connectDB();
 
     // Step 1: Check if recipe already exists in DB (case-insensitive search)
-    const searchResponse = await fetch(
-      `${baseUrl}/api/recipes?title=${encodeURIComponent(normalizedTitle)}&populate=author`,
-      {
-        cache: "no-store",
+    const existingRecipe = await Recipe.findOne({
+      title: { $regex: new RegExp(`^${normalizedTitle}$`, "i") },
+    }).populate("author", "firstName lastName email imageUrl clerkId");
+
+    if (existingRecipe) {
+      console.log("Recipe found in database:", existingRecipe._id);
+
+      // Check if user has saved this recipe
+      const dbUser = await User.findOne({ clerkId: user.clerkId });
+      let isSaved = false;
+      
+      if (dbUser) {
+        const savedRecipe = await SavedRecipe.findOne({
+          user: dbUser._id,
+          recipe: existingRecipe._id,
+        });
+        isSaved = !!savedRecipe;
       }
-    );
 
-    if (searchResponse.ok) {
-      const searchData = await searchResponse.json();
-
-      if (searchData.data && searchData.data.length > 0) {
-        const existingRecipe = searchData.data[0];
-        console.log("✅ Recipe found in database:", existingRecipe._id);
-
-        // Check if user has saved this recipe
-        const savedRecipeResponse = await fetch(
-          `${baseUrl}/api/saved-recipes/check?clerkId=${user.clerkId}&recipeId=${existingRecipe._id}`,
-          {
-            cache: "no-store",
-          }
-        );
-
-        let isSaved = false;
-        if (savedRecipeResponse.ok) {
-          const savedData = await savedRecipeResponse.json();
-          isSaved = savedData.saved;
-        }
-
-        return {
-          success: true,
-          recipe: existingRecipe,
-          recipeId: existingRecipe._id,
-          isSaved: isSaved,
-          fromDatabase: true,
-          isPro,
-          message: "Recipe loaded from database",
-        };
-      }
+      return {
+        success: true,
+        recipe: existingRecipe.toObject(),
+        recipeId: existingRecipe._id.toString(),
+        isSaved: isSaved,
+        fromDatabase: true,
+        isPro,
+        message: "Recipe loaded from database",
+      };
     }
 
     // Step 2: Recipe doesn't exist, generate with Gemini
-    console.log("🤖 Recipe not found, generating with Gemini...");
+    console.log("Recipe not found, generating with Gemini...");
 
     const model = genAI.getGenerativeModel({ model: "gemma-3-27b-it" });
 
@@ -269,11 +253,13 @@ Guidelines:
       : "other";
 
     // Step 3: Fetch image from Unsplash
-    console.log("🖼️ Fetching image from Unsplash...");
+    console.log("Fetching image from Unsplash...");
     const imageUrl = await fetchRecipeImage(normalizedTitle);
 
-    // Step 4: Save generated recipe to database
-    const recipePayload = {
+    // Step 4: Save generated recipe to database directly
+    const dbUser = await User.findOne({ clerkId: user.clerkId });
+
+    const newRecipe = await Recipe.create({
       title: normalizedTitle,
       description: recipeData.description,
       cuisine,
@@ -288,30 +274,10 @@ Guidelines:
       substitutions: recipeData.substitutions,
       imageUrl: imageUrl || "",
       isPublic: true,
-      author: user.clerkId,
-    };
-
-    console.log(
-      "📤 Saving new recipe to database with title:",
-      normalizedTitle
-    );
-
-    const createRecipeResponse = await fetch(`${baseUrl}/api/recipes`, {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-      },
-      body: JSON.stringify(recipePayload),
+      author: dbUser?._id || null,
     });
 
-    if (!createRecipeResponse.ok) {
-      const errorText = await createRecipeResponse.text();
-      console.error("❌ Failed to save recipe:", errorText);
-      throw new Error("Failed to save recipe to database");
-    }
-
-    const createdRecipe = await createRecipeResponse.json();
-    console.log("✅ Recipe saved to database:", createdRecipe.data._id);
+    console.log("Recipe saved to database:", newRecipe._id);
 
     return {
       success: true,
@@ -322,7 +288,7 @@ Guidelines:
         cuisine,
         imageUrl: imageUrl || "",
       },
-      recipeId: createdRecipe.data._id,
+      recipeId: newRecipe._id.toString(),
       isSaved: false,
       fromDatabase: false,
       recommendationsLimit: isPro ? "unlimited" : 5,
@@ -330,7 +296,7 @@ Guidelines:
       message: "Recipe generated and saved successfully!",
     };
   } catch (error) {
-    console.error("❌ Error in getOrGenerateRecipe:", error);
+    console.error("Error in getOrGenerateRecipe:", error);
     throw new Error(error.message || "Failed to load recipe");
   }
 }
@@ -348,31 +314,22 @@ export async function saveRecipeToCollection(formData) {
       throw new Error("Recipe ID is required");
     }
 
-    const baseUrl = await getBaseUrl();
+    // Connect to database
+    await connectDB();
 
-    // Create saved recipe relation
-    const saveResponse = await fetch(`${baseUrl}/api/saved-recipes`, {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-      },
-      body: JSON.stringify({
-        user: user.clerkId,
-        recipe: recipeId,
-        savedAt: new Date().toISOString(),
-      }),
-    });
-
-    if (!saveResponse.ok) {
-      const errorText = await saveResponse.text();
-      console.error("❌ Failed to save recipe:", errorText);
-      throw new Error("Failed to save recipe to collection");
+    // Find the user in database
+    const dbUser = await User.findOne({ clerkId: user.clerkId });
+    if (!dbUser) {
+      throw new Error("User not found in database");
     }
 
-    const savedRecipe = await saveResponse.json();
-    
-    // Check if it was already saved
-    if (savedRecipe.message === "Recipe already saved") {
+    // Check if already saved
+    const existingSave = await SavedRecipe.findOne({
+      user: dbUser._id,
+      recipe: recipeId,
+    });
+
+    if (existingSave) {
       return {
         success: true,
         alreadySaved: true,
@@ -380,16 +337,23 @@ export async function saveRecipeToCollection(formData) {
       };
     }
 
-    console.log("✅ Recipe saved to user collection:", savedRecipe.data._id);
+    // Create saved recipe relation
+    const savedRecipe = await SavedRecipe.create({
+      user: dbUser._id,
+      recipe: recipeId,
+      savedAt: new Date(),
+    });
+
+    console.log("Recipe saved to user collection:", savedRecipe._id);
 
     return {
       success: true,
       alreadySaved: false,
-      savedRecipe: savedRecipe.data,
+      savedRecipe: savedRecipe.toObject(),
       message: "Recipe saved to your collection!",
     };
   } catch (error) {
-    console.error("❌ Error saving recipe to collection:", error);
+    console.error("Error saving recipe to collection:", error);
     throw new Error(error.message || "Failed to save recipe");
   }
 }
@@ -407,39 +371,36 @@ export async function removeRecipeFromCollection(formData) {
       throw new Error("Recipe ID is required");
     }
 
-    const baseUrl = await getBaseUrl();
+    // Connect to database
+    await connectDB();
 
-    // Delete saved recipe relation
-    const deleteResponse = await fetch(`${baseUrl}/api/saved-recipes/unsave`, {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-      },
-      body: JSON.stringify({
-        clerkId: user.clerkId,
-        recipeId: recipeId,
-      }),
-    });
-
-    if (!deleteResponse.ok) {
-      const errorData = await deleteResponse.json();
-      if (errorData.error?.message === "Saved recipe not found") {
-        return {
-          success: true,
-          message: "Recipe was not in your collection",
-        };
-      }
-      throw new Error("Failed to remove recipe from collection");
+    // Find the user in database
+    const dbUser = await User.findOne({ clerkId: user.clerkId });
+    if (!dbUser) {
+      throw new Error("User not found in database");
     }
 
-    console.log("✅ Recipe removed from user collection");
+    // Delete saved recipe relation
+    const result = await SavedRecipe.findOneAndDelete({
+      user: dbUser._id,
+      recipe: recipeId,
+    });
+
+    if (!result) {
+      return {
+        success: true,
+        message: "Recipe was not in your collection",
+      };
+    }
+
+    console.log("Recipe removed from user collection");
 
     return {
       success: true,
       message: "Recipe removed from your collection",
     };
   } catch (error) {
-    console.error("❌ Error removing recipe from collection:", error);
+    console.error("Error removing recipe from collection:", error);
     throw new Error(error.message || "Failed to remove recipe");
   }
 }
@@ -452,7 +413,7 @@ export async function getRecipesByPantryIngredients() {
       throw new Error("User not authenticated");
     }
 
-    // ✅ ARCJET RATE LIMIT CHECK
+    // ARCJET RATE LIMIT CHECK
     const isPro = user.subscriptionTier === "pro";
     const arcjetClient = isPro ? proTierLimit : freeMealRecommendations;
 
@@ -475,32 +436,28 @@ export async function getRecipesByPantryIngredients() {
       throw new Error("Request denied");
     }
 
-    const baseUrl = await getBaseUrl();
+    // Connect to database
+    await connectDB();
 
-    // Get user's pantry items
-    const pantryResponse = await fetch(
-      `${baseUrl}/api/pantry-items?clerkId=${user.clerkId}`,
-      {
-        cache: "no-store",
-      }
-    );
-
-    if (!pantryResponse.ok) {
-      throw new Error("Failed to fetch pantry items");
+    // Find the user in database
+    const dbUser = await User.findOne({ clerkId: user.clerkId });
+    if (!dbUser) {
+      throw new Error("User not found in database");
     }
 
-    const pantryData = await pantryResponse.json();
+    // Get user's pantry items directly from database
+    const pantryItems = await PantryItem.find({ owner: dbUser._id });
 
-    if (!pantryData.data || pantryData.data.length === 0) {
+    if (!pantryItems || pantryItems.length === 0) {
       return {
         success: false,
         message: "Your pantry is empty. Add ingredients first!",
       };
     }
 
-    const ingredients = pantryData.data.map((item) => item.name).join(", ");
+    const ingredients = pantryItems.map((item) => item.name).join(", ");
 
-    console.log("🥘 Finding recipes for ingredients:", ingredients);
+    console.log("Finding recipes for ingredients:", ingredients);
 
     const model = genAI.getGenerativeModel({ model: "gemini-2.5-flash-lite" });
 
@@ -557,7 +514,7 @@ Rules:
       message: `Found ${recipeSuggestions.length} recipes you can make!`,
     };
   } catch (error) {
-    console.error("❌ Error in getRecipesByPantryIngredients:", error);
+    console.error("Error in getRecipesByPantryIngredients:", error);
     throw new Error(error.message || "Failed to get recipe suggestions");
   }
 }
@@ -570,30 +527,32 @@ export async function getSavedRecipes() {
       throw new Error("User not authenticated");
     }
 
-    const baseUrl = await getBaseUrl();
+    // Connect to database
+    await connectDB();
 
-    // Fetch saved recipes with populated recipe data
-    const response = await fetch(
-      `${baseUrl}/api/saved-recipes?clerkId=${user.clerkId}&populate=recipe&sort=-savedAt`,
-      {
-        cache: "no-store",
-      }
-    );
-
-    if (!response.ok) {
-      throw new Error("Failed to fetch saved recipes");
+    // Find the user in database
+    const dbUser = await User.findOne({ clerkId: user.clerkId });
+    if (!dbUser) {
+      return {
+        success: true,
+        recipes: [],
+        count: 0,
+      };
     }
 
-    const data = await response.json();
+    // Fetch saved recipes with populated recipe data
+    const savedRecipes = await SavedRecipe.find({ user: dbUser._id })
+      .populate("recipe")
+      .sort({ savedAt: -1 });
 
     // Extract recipes from saved-recipes relations
-    const recipes = data.data
+    const recipes = savedRecipes
       .map((savedRecipe) => savedRecipe.recipe)
       .filter(Boolean); // Remove any null recipes
 
     return {
       success: true,
-      recipes,
+      recipes: recipes.map((r) => r.toObject()),
       count: recipes.length,
     };
   } catch (error) {

@@ -4,19 +4,12 @@ import { checkUser } from "@/lib/checkUser";
 import { GoogleGenerativeAI } from "@google/generative-ai";
 import { freePantryScans, proTierLimit } from "@/lib/arcjet";
 import { request } from "@arcjet/next";
-import { headers } from "next/headers";
+import connectDB from "@/lib/db/mongodb";
+import { PantryItem, User } from "@/lib/db/models";
 
 const GEMINI_API_KEY = process.env.GEMINI_API_KEY;
 
 const genAI = new GoogleGenerativeAI(GEMINI_API_KEY);
-
-// Helper to get base URL for API calls
-async function getBaseUrl() {
-  const headersList = await headers();
-  const host = headersList.get("host");
-  const protocol = process.env.NODE_ENV === "development" ? "http" : "https";
-  return `${protocol}://${host}`;
-}
 
 // Scan image with Gemini Vision
 export async function scanPantryImage(formData) {
@@ -146,34 +139,29 @@ export async function saveToPantry(formData) {
       throw new Error("No ingredients to save");
     }
 
-    const baseUrl = await getBaseUrl();
+    // Connect to database
+    await connectDB();
 
-    // Create pantry items using bulk endpoint
-    const response = await fetch(`${baseUrl}/api/pantry-items/bulk`, {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-      },
-      body: JSON.stringify({
-        owner: user.clerkId,
-        items: ingredients.map(ingredient => ({
-          name: ingredient.name,
-          quantity: ingredient.quantity,
-          imageUrl: "",
-        })),
-      }),
-    });
-
-    if (!response.ok) {
-      throw new Error("Failed to save items to pantry");
+    // Find the user in database
+    const dbUser = await User.findOne({ clerkId: user.clerkId });
+    if (!dbUser) {
+      throw new Error("User not found in database");
     }
 
-    const data = await response.json();
+    // Create pantry items in bulk
+    const pantryItemsData = ingredients.map((ingredient) => ({
+      name: ingredient.name,
+      quantity: ingredient.quantity,
+      imageUrl: "",
+      owner: dbUser._id,
+    }));
+
+    const savedItems = await PantryItem.insertMany(pantryItemsData);
 
     return {
       success: true,
-      savedItems: data.data,
-      message: `Saved ${data.data.length} items to your pantry!`,
+      savedItems: savedItems.map((item) => item.toObject()),
+      message: `Saved ${savedItems.length} items to your pantry!`,
     };
   } catch (error) {
     console.error("Error saving to pantry:", error);
@@ -196,32 +184,25 @@ export async function addPantryItemManually(formData) {
       throw new Error("Name and quantity are required");
     }
 
-    const baseUrl = await getBaseUrl();
+    // Connect to database
+    await connectDB();
 
-    const response = await fetch(`${baseUrl}/api/pantry-items`, {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-      },
-      body: JSON.stringify({
-        name: name.trim(),
-        quantity: quantity.trim(),
-        imageUrl: "",
-        owner: user.clerkId,
-      }),
-    });
-
-    if (!response.ok) {
-      const errorText = await response.text();
-      console.error("Failed to add item:", errorText);
-      throw new Error("Failed to add item to pantry");
+    // Find the user in database
+    const dbUser = await User.findOne({ clerkId: user.clerkId });
+    if (!dbUser) {
+      throw new Error("User not found in database");
     }
 
-    const data = await response.json();
+    const newItem = await PantryItem.create({
+      name: name.trim(),
+      quantity: quantity.trim(),
+      imageUrl: "",
+      owner: dbUser._id,
+    });
 
     return {
       success: true,
-      item: data.data,
+      item: newItem.toObject(),
       message: "Item added successfully!",
     };
   } catch (error) {
@@ -238,26 +219,28 @@ export async function getPantryItems() {
       throw new Error("User not authenticated");
     }
 
-    const baseUrl = await getBaseUrl();
+    // Connect to database
+    await connectDB();
 
-    const response = await fetch(
-      `${baseUrl}/api/pantry-items?clerkId=${user.clerkId}&sort=-createdAt`,
-      {
-        cache: "no-store",
-      }
-    );
-
-    if (!response.ok) {
-      throw new Error("Failed to fetch pantry items");
+    // Find the user in database
+    const dbUser = await User.findOne({ clerkId: user.clerkId });
+    if (!dbUser) {
+      return {
+        success: true,
+        items: [],
+        scansLimit: user.subscriptionTier === "pro" ? "unlimited" : 10,
+      };
     }
 
-    const data = await response.json();
+    const items = await PantryItem.find({ owner: dbUser._id }).sort({
+      createdAt: -1,
+    });
 
     const isPro = user.subscriptionTier === "pro";
 
     return {
       success: true,
-      items: data.data || [],
+      items: items.map((item) => item.toObject()),
       scansLimit: isPro ? "unlimited" : 10,
     };
   } catch (error) {
@@ -275,15 +258,22 @@ export async function deletePantryItem(formData) {
     }
 
     const itemId = formData.get("itemId");
-    const baseUrl = await getBaseUrl();
 
-    const response = await fetch(`${baseUrl}/api/pantry-items/${itemId}`, {
-      method: "DELETE",
-    });
+    // Connect to database
+    await connectDB();
 
-    if (!response.ok) {
-      throw new Error("Failed to delete item");
+    // Find and verify ownership before deleting
+    const dbUser = await User.findOne({ clerkId: user.clerkId });
+    if (!dbUser) {
+      throw new Error("User not found in database");
     }
+
+    const item = await PantryItem.findOne({ _id: itemId, owner: dbUser._id });
+    if (!item) {
+      throw new Error("Item not found or you don't have permission to delete it");
+    }
+
+    await PantryItem.findByIdAndDelete(itemId);
 
     return {
       success: true,
@@ -307,28 +297,29 @@ export async function updatePantryItem(formData) {
     const name = formData.get("name");
     const quantity = formData.get("quantity");
 
-    const baseUrl = await getBaseUrl();
+    // Connect to database
+    await connectDB();
 
-    const response = await fetch(`${baseUrl}/api/pantry-items/${itemId}`, {
-      method: "PUT",
-      headers: {
-        "Content-Type": "application/json",
-      },
-      body: JSON.stringify({
-        name,
-        quantity,
-      }),
-    });
-
-    if (!response.ok) {
-      throw new Error("Failed to update item");
+    // Find and verify ownership before updating
+    const dbUser = await User.findOne({ clerkId: user.clerkId });
+    if (!dbUser) {
+      throw new Error("User not found in database");
     }
 
-    const data = await response.json();
+    const item = await PantryItem.findOne({ _id: itemId, owner: dbUser._id });
+    if (!item) {
+      throw new Error("Item not found or you don't have permission to update it");
+    }
+
+    const updatedItem = await PantryItem.findByIdAndUpdate(
+      itemId,
+      { name, quantity },
+      { new: true }
+    );
 
     return {
       success: true,
-      item: data.data,
+      item: updatedItem.toObject(),
       message: "Item updated successfully",
     };
   } catch (error) {

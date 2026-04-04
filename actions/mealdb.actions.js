@@ -10,17 +10,27 @@ export async function getRecipeOfTheDay() {
     });
 
     if (!response.ok) {
-      throw new Error("Failed to fetch recipe of the day");
+      console.error("Failed to fetch recipe of the day:", response.statusText);
+      return {
+        success: false,
+        recipe: null,
+        error: "Failed to fetch recipe of the day",
+      };
     }
 
     const data = await response.json();
     return {
       success: true,
-      recipe: data.meals[0],
+      recipe: data.meals?.[0] || null,
     };
   } catch (error) {
     console.error("Error fetching recipe of the day:", error);
-    throw new Error(error.message || "Failed to load recipe");
+    // Return graceful fallback instead of throwing
+    return {
+      success: false,
+      recipe: null,
+      error: error.message || "Failed to load recipe",
+    };
   }
 }
 
@@ -32,7 +42,12 @@ export async function getCategories() {
     });
 
     if (!response.ok) {
-      throw new Error("Failed to fetch categories");
+      console.error("Failed to fetch categories:", response.statusText);
+      return {
+        success: false,
+        categories: [],
+        error: "Failed to fetch categories",
+      };
     }
 
     const data = await response.json();
@@ -42,7 +57,12 @@ export async function getCategories() {
     };
   } catch (error) {
     console.error("Error fetching categories:", error);
-    throw new Error(error.message || "Failed to load categories");
+    // Return graceful fallback instead of throwing
+    return {
+      success: false,
+      categories: [],
+      error: error.message || "Failed to load categories",
+    };
   }
 }
 
@@ -54,7 +74,12 @@ export async function getAreas() {
     });
 
     if (!response.ok) {
-      throw new Error("Failed to fetch areas");
+      console.error("Failed to fetch areas:", response.statusText);
+      return {
+        success: false,
+        areas: [],
+        error: "Failed to fetch areas",
+      };
     }
 
     const data = await response.json();
@@ -64,7 +89,12 @@ export async function getAreas() {
     };
   } catch (error) {
     console.error("Error fetching areas:", error);
-    throw new Error(error.message || "Failed to load areas");
+    // Return graceful fallback instead of throwing
+    return {
+      success: false,
+      areas: [],
+      error: error.message || "Failed to load areas",
+    };
   }
 }
 
@@ -76,7 +106,13 @@ export async function getMealsByCategory(category) {
     });
 
     if (!response.ok) {
-      throw new Error("Failed to fetch meals");
+      console.error("Failed to fetch meals by category:", response.statusText);
+      return {
+        success: false,
+        meals: [],
+        category,
+        error: "Failed to fetch meals",
+      };
     }
 
     const data = await response.json();
@@ -87,7 +123,12 @@ export async function getMealsByCategory(category) {
     };
   } catch (error) {
     console.error("Error fetching meals by category:", error);
-    throw new Error(error.message || "Failed to load meals");
+    return {
+      success: false,
+      meals: [],
+      category,
+      error: error.message || "Failed to load meals",
+    };
   }
 }
 
@@ -99,7 +140,13 @@ export async function getMealsByArea(area) {
     });
 
     if (!response.ok) {
-      throw new Error("Failed to fetch meals");
+      console.error("Failed to fetch meals by area:", response.statusText);
+      return {
+        success: false,
+        meals: [],
+        area,
+        error: "Failed to fetch meals",
+      };
     }
 
     const data = await response.json();
@@ -110,6 +157,11 @@ export async function getMealsByArea(area) {
     };
   } catch (error) {
     console.error("Error fetching meals by area:", error);
-    throw new Error(error.message || "Failed to load meals");
+    return {
+      success: false,
+      meals: [],
+      area,
+      error: error.message || "Failed to load meals",
+    };
   }
 }
