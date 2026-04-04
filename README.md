@@ -3,7 +3,6 @@
 An intelligent recipe platform that turns your leftover ingredients into gourmet meals using AI. Snap a photo of your pantry, and Servd will identify your ingredients and generate personalized recipes with nutritional info, cooking tips, and beautiful images.
 
 ![Next.js](https://img.shields.io/badge/Next.js-16-black?logo=next.js)
-![Express](https://img.shields.io/badge/Express-4-green?logo=express)
 ![MongoDB](https://img.shields.io/badge/MongoDB-6-green?logo=mongodb)
 ![Clerk](https://img.shields.io/badge/Auth-Clerk-purple?logo=clerk)
 ![Gemini](https://img.shields.io/badge/AI-Google%20Gemini-orange?logo=google)
@@ -25,8 +24,8 @@ An intelligent recipe platform that turns your leftover ingredients into gourmet
 
 | Layer | Technology |
 |-------|-----------|
-| **Frontend** | Next.js 16, React 19, Tailwind CSS 4 |
-| **Backend** | Express.js, Node.js |
+| **Framework** | Next.js 16, React 19 |
+| **Styling** | Tailwind CSS 4 |
 | **Database** | MongoDB (Mongoose ODM) |
 | **AI** | Google Gemini API (text + vision) |
 | **Auth** | Clerk (with Commerce/Billing) |
@@ -38,34 +37,28 @@ An intelligent recipe platform that turns your leftover ingredients into gourmet
 
 ```
 ai-recipe-platform/
-├── backend/                 # Express.js API Server
-│   ├── src/
-│   │   ├── config/          # Database configuration
-│   │   ├── controllers/     # Route handlers
-│   │   ├── models/          # Mongoose schemas
-│   │   │   ├── User.js
-│   │   │   ├── Recipe.js
-│   │   │   ├── PantryItem.js
-│   │   │   └── SavedRecipe.js
-│   │   ├── routes/          # API routes
-│   │   └── server.js        # Express app entry
-│   └── .env                 # Backend environment variables
-│
-├── frontend/                # Next.js 16 App
-│   ├── app/
-│   │   ├── page.js          # Landing page
-│   │   ├── (auth)/          # Sign-in / Sign-up pages
-│   │   ├── (main)/
-│   │   │   ├── dashboard/   # Recipe discovery & browsing
-│   │   │   ├── pantry/      # Pantry management & AI scanning
-│   │   │   ├── recipe/      # Individual recipe page
-│   │   │   └── recipes/     # Saved recipes & browse by category/cuisine
-│   │   └── api/webhooks/    # Clerk webhooks
-│   ├── actions/             # Server actions (recipe, pantry, mealdb)
-│   ├── components/          # Reusable UI components
-│   ├── lib/                 # Utilities, Arcjet config, user helpers
-│   └── .env.local           # Frontend environment variables
-│
+├── app/
+│   ├── api/                 # API Routes (serverless functions)
+│   │   ├── users/           # User CRUD endpoints
+│   │   ├── recipes/         # Recipe CRUD endpoints
+│   │   ├── pantry-items/    # Pantry CRUD endpoints
+│   │   ├── saved-recipes/   # Saved recipes endpoints
+│   │   └── webhooks/        # Clerk webhooks
+│   ├── (auth)/              # Sign-in / Sign-up pages
+│   └── (main)/              # Main app pages
+│       ├── dashboard/       # Recipe discovery & browsing
+│       ├── pantry/          # Pantry management & AI scanning
+│       ├── recipe/          # Individual recipe page
+│       └── recipes/         # Saved recipes & browse
+├── actions/                 # Server actions (recipe, pantry, mealdb)
+├── components/              # Reusable UI components
+├── lib/
+│   ├── db/                  # Database connection & models
+│   │   ├── mongodb.js       # MongoDB connection with caching
+│   │   └── models/          # Mongoose schemas
+│   └── ...                  # Utilities, Arcjet config, etc.
+├── public/                  # Static assets
+├── .env.local               # Environment variables
 └── README.md
 ```
 
@@ -84,37 +77,15 @@ git clone https://github.com/your-username/ai-recipe-platform.git
 cd ai-recipe-platform
 ```
 
-### 2. Backend Setup (Express.js)
+### 2. Install Dependencies
 
 ```bash
-cd backend
 npm install
 ```
 
-Create a `.env` file in the `backend/` directory:
+### 3. Configure Environment Variables
 
-```env
-PORT=5000
-MONGODB_URI=mongodb://localhost:27017/recipe-platform
-NODE_ENV=development
-```
-
-Start the backend:
-
-```bash
-npm run dev
-```
-
-The API will be available at `http://localhost:5000`.
-
-### 3. Frontend Setup (Next.js)
-
-```bash
-cd frontend
-npm install
-```
-
-Create a `.env.local` file in the `frontend/` directory:
+Create a `.env.local` file in the root directory:
 
 ```env
 # Clerk Authentication
@@ -124,8 +95,8 @@ CLERK_WEBHOOK_SECRET=whsec_xxxxx
 NEXT_PUBLIC_CLERK_SIGN_IN_URL=/sign-in
 NEXT_PUBLIC_CLERK_SIGN_UP_URL=/sign-up
 
-# Backend API
-NEXT_PUBLIC_API_URL=http://localhost:5000
+# MongoDB Database
+MONGODB_URI=mongodb://localhost:27017/recipe-platform
 
 # Google Gemini AI
 GEMINI_API_KEY=your_gemini_api_key
@@ -137,7 +108,7 @@ ARCJET_KEY=your_arcjet_key
 UNSPLASH_ACCESS_KEY=your_unsplash_access_key
 ```
 
-Start the frontend:
+### 4. Start the Development Server
 
 ```bash
 npm run dev
@@ -162,7 +133,7 @@ To sync user deletions between Clerk and your database:
 
 1. Go to [Clerk Dashboard](https://dashboard.clerk.com) - **Webhooks**
 2. Click **Add Endpoint**
-3. Enter URL: `https://your-domain.com/api/webhooks/clerk`
+3. Enter URL: `https://your-domain.vercel.app/api/webhooks/clerk`
 4. Select events: `user.created`, `user.updated`, `user.deleted`
 5. Copy the **Signing Secret** and add it as `CLERK_WEBHOOK_SECRET` in your environment
 
@@ -187,40 +158,19 @@ To enable the Pro subscription plan:
 | Chef's Tips & Tricks | No | Yes |
 | Ingredient Substitutions | No | Yes |
 
-## Running Both Servers
+## Deployment (Vercel)
 
-Open two terminals:
+### One-Click Deploy
 
-```bash
-# Terminal 1 - Backend
-cd node-backend
-npm run dev
+[![Deploy with Vercel](https://vercel.com/button)](https://vercel.com/new/clone?repository-url=https://github.com/your-username/ai-recipe-platform)
 
-# Terminal 2 - Frontend
-cd frontend
-npm run dev
-```
-
-| Service | URL |
-|---------|-----|
-| Frontend | http://localhost:3000 |
-| Backend API | http://localhost:5000/api |
-
-## Deployment
-
-### Frontend (Vercel)
+### Manual Deploy
 
 1. Connect your GitHub repo to [Vercel](https://vercel.com)
-2. Set root directory to `frontend`
-3. Add environment variables in Vercel dashboard
-4. Deploy
+2. Add all environment variables in Vercel dashboard
+3. Deploy
 
-### Backend (Railway/Render)
-
-1. Connect your GitHub repo to [Railway](https://railway.app) or [Render](https://render.com)
-2. Set root directory to `backend`
-3. Add environment variables
-4. Deploy
+**Note:** Make sure to use MongoDB Atlas for production (not localhost).
 
 ## Author
 
