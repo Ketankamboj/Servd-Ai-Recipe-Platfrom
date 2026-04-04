@@ -1,36 +1,22 @@
 {
-  "name": "backend",
-  "version": "0.1.0",
-  "private": true,
-  "description": "A Strapi application",
+  "name": "node-backend",
+  "version": "1.0.0",
+  "description": "AI Recipe Platform Backend - Node.js + Express + MongoDB",
+  "main": "src/app.js",
   "scripts": {
-    "build": "strapi build",
-    "console": "strapi console",
-    "deploy": "strapi deploy",
-    "dev": "strapi develop",
-    "develop": "strapi develop",
-    "start": "strapi start",
-    "strapi": "strapi",
-    "upgrade": "npx @strapi/upgrade latest",
-    "upgrade:dry": "npx @strapi/upgrade latest --dry"
+    "start": "node src/app.js",
+    "dev": "node --watch src/app.js"
   },
+  "keywords": ["recipe", "api", "mongodb", "express"],
+  "author": "",
+  "license": "ISC",
+  "type": "commonjs",
   "dependencies": {
-    "@strapi/plugin-cloud": "5.33.1",
-    "@strapi/plugin-users-permissions": "5.33.1",
-    "@strapi/strapi": "5.33.1",
-    "better-sqlite3": "^12.6.2",
-    "pg": "8.8.0",
-    "react": "^18.0.0",
-    "react-dom": "^18.0.0",
-    "react-router-dom": "^6.0.0",
-    "styled-components": "^6.0.0"
-  },
-  "engines": {
-    "node": ">=20.0.0 <=24.x.x",
-    "npm": ">=6.0.0"
-  },
-  "strapi": {
-    "uuid": "67d4db0d-abed-4a57-bffa-d493cb199b33",
-    "installId": "99218885effa28881dbbf2eb76a72a559071ecf6befd2ac51b5f1be1dc64808d"
+    "cors": "^2.8.6",
+    "dotenv": "^17.4.0",
+    "express": "^5.2.1",
+    "helmet": "^8.1.0",
+    "mongoose": "^9.3.3",
+    "morgan": "^1.10.1"
   }
 }

@@ -50,7 +50,7 @@ export default function SavedRecipesPage() {
           <div className="grid md:grid-cols-2 gap-6">
             {recipes.map((recipe) => (
               <RecipeCard
-                key={recipe.documentId}
+                key={recipe._id || recipe.id || recipe.documentId}
                 recipe={recipe}
                 variant="list"
               />

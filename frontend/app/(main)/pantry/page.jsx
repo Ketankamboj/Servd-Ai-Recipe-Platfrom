@@ -91,7 +91,7 @@ export default function PantryPage() {
 
   // Start editing
   const startEdit = (item) => {
-    setEditingId(item.documentId);
+    setEditingId(item._id || item.id || item.documentId);
     setEditValues({
       name: item.name,
       quantity: item.quantity,
@@ -235,10 +235,10 @@ export default function PantryPage() {
             <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-4">
               {items.map((item) => (
                 <div
-                  key={item.documentId}
+                  key={item._id || item.id || item.documentId}
                   className="bg-white p-5 border-2 border-stone-200 hover:border-orange-600 hover:shadow-lg transition-all"
                 >
-                  {editingId === item.documentId ? (
+                  {editingId === (item._id || item.id || item.documentId) ? (
                     // Edit Mode
                     <div className="space-y-3">
                       <input
@@ -306,7 +306,7 @@ export default function PantryPage() {
                             <Edit2 className="w-4 h-4" />
                           </button>
                           <button
-                            onClick={() => handleDelete(item.documentId)}
+                            onClick={() => handleDelete(item._id || item.id || item.documentId)}
                             disabled={deleting}
                             className="p-2 border-2 border-transparent hover:border-red-600 hover:bg-red-50 transition-all text-stone-600 hover:text-red-600"
                           >

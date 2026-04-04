@@ -1,7 +1,7 @@
 /* eslint-disable react-hooks/set-state-in-effect */
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { useRouter } from "next/navigation";
 import { ChefHat, Search } from "lucide-react";
 import { Button } from "@/components/ui/button";
@@ -19,6 +19,12 @@ export default function HowToCookModal() {
   const router = useRouter();
   const [recipeName, setRecipeName] = useState("");
   const [isOpen, setIsOpen] = useState(false);
+  const [mounted, setMounted] = useState(false);
+
+  // Only render Dialog on client to avoid hydration mismatch
+  useEffect(() => {
+    setMounted(true);
+  }, []);
 
   const handleSubmit = async (e) => {
     e.preventDefault();
@@ -38,6 +44,16 @@ export default function HowToCookModal() {
       setRecipeName(""); // Reset input when closing
     }
   };
+
+  // Show a simple button during SSR to avoid hydration mismatch
+  if (!mounted) {
+    return (
+      <button className="hover:text-orange-600 transition-colors flex items-center gap-1.5 text-sm font-medium text-stone-600">
+        <ChefHat className="w-4 h-4" />
+        How to Cook?
+      </button>
+    );
+  }
 
   return (
     <Dialog open={isOpen} onOpenChange={handleOpenChange}>

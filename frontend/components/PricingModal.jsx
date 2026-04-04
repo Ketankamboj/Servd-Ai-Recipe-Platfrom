@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useState } from "react";
+import React, { useState, useEffect } from "react";
 import {
   Dialog,
   DialogContent,
@@ -11,9 +11,20 @@ import PricingSection from "./PricingSection";
 
 export default function PricingModal({ subscriptionTier = "free", children }) {
   const [isOpen, setIsOpen] = useState(false);
+  const [mounted, setMounted] = useState(false);
+
+  // Only render Dialog on client to avoid hydration mismatch
+  useEffect(() => {
+    setMounted(true);
+  }, []);
 
   // Only allow opening if user is on free plan
   const canOpen = subscriptionTier === "free";
+
+  // Show children without Dialog wrapper during SSR
+  if (!mounted) {
+    return <>{children}</>;
+  }
 
   return (
     <Dialog open={isOpen} onOpenChange={canOpen ? setIsOpen : undefined}>
