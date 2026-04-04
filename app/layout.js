@@ -13,6 +13,9 @@ export const metadata = {
   description: "",
 };
 
+// Force dynamic rendering for all pages due to Clerk auth in Header
+export const dynamic = "force-dynamic";
+
 export default function RootLayout({ children }) {
   return (
     <ClerkProvider

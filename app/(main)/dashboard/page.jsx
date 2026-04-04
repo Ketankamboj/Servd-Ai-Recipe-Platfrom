@@ -11,6 +11,9 @@ import {
 } from "@/actions/mealdb.actions";
 import { getCategoryEmoji, getCountryFlag } from "@/lib/data";
 
+// Force dynamic rendering to avoid static generation issues with auth
+export const dynamic = "force-dynamic";
+
 export default async function DashboardPage() {
   // Fetch data server-side
   const recipeData = await getRecipeOfTheDay();
