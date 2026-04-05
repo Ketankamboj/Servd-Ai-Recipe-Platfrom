@@ -21,6 +21,27 @@ function normalizeTitle(title) {
     .join(" ");
 }
 
+// Helper function to serialize MongoDB documents for Client Components
+function serializeRecipe(recipe) {
+  const plainRecipe = recipe.toObject ? recipe.toObject() : recipe;
+  
+  return {
+    ...plainRecipe,
+    _id: plainRecipe._id?.toString(),
+    author: plainRecipe.author ? {
+      _id: plainRecipe.author._id?.toString(),
+      firstName: plainRecipe.author.firstName,
+      lastName: plainRecipe.author.lastName,
+      email: plainRecipe.author.email,
+      imageUrl: plainRecipe.author.imageUrl,
+      clerkId: plainRecipe.author.clerkId,
+    } : null,
+    createdAt: plainRecipe.createdAt?.toISOString(),
+    updatedAt: plainRecipe.updatedAt?.toISOString(),
+    publishedAt: plainRecipe.publishedAt?.toISOString(),
+  };
+}
+
 // Helper function to fetch image from Unsplash
 async function fetchRecipeImage(recipeName) {
   try {
@@ -65,11 +86,6 @@ async function fetchRecipeImage(recipeName) {
 // Get or generate recipe details
 export async function getOrGenerateRecipe(formData) {
   try {
-    const user = await checkUser();
-    if (!user) {
-      throw new Error("User not authenticated");
-    }
-
     const recipeName = formData.get("recipeName");
     if (!recipeName) {
       throw new Error("Recipe name is required");
@@ -79,7 +95,15 @@ export async function getOrGenerateRecipe(formData) {
     const normalizedTitle = normalizeTitle(recipeName);
     console.log("Searching for recipe:", normalizedTitle);
 
-    const isPro = user.subscriptionTier === "pro";
+    // Try to get user, but allow recipe generation even if not authenticated
+    let user = null;
+    try {
+      user = await checkUser();
+    } catch (authError) {
+      console.log("Auth check failed, continuing as guest:", authError.message);
+    }
+
+    const isPro = user?.subscriptionTier === "pro" || false;
 
     // Connect to database
     await connectDB();
@@ -93,20 +117,23 @@ export async function getOrGenerateRecipe(formData) {
       console.log("Recipe found in database:", existingRecipe._id);
 
       // Check if user has saved this recipe
-      const dbUser = await User.findOne({ clerkId: user.clerkId });
       let isSaved = false;
       
-      if (dbUser) {
-        const savedRecipe = await SavedRecipe.findOne({
-          user: dbUser._id,
-          recipe: existingRecipe._id,
-        });
-        isSaved = !!savedRecipe;
+      if (user) {
+        const dbUser = await User.findOne({ clerkId: user.clerkId });
+        
+        if (dbUser) {
+          const savedRecipe = await SavedRecipe.findOne({
+            user: dbUser._id,
+            recipe: existingRecipe._id,
+          });
+          isSaved = !!savedRecipe;
+        }
       }
 
       return {
         success: true,
-        recipe: existingRecipe.toObject(),
+        recipe: serializeRecipe(existingRecipe),
         recipeId: existingRecipe._id.toString(),
         isSaved: isSaved,
         fromDatabase: true,
