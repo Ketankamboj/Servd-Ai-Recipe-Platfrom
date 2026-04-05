@@ -158,20 +158,6 @@ To enable the Pro subscription plan:
 | Chef's Tips & Tricks | No | Yes |
 | Ingredient Substitutions | No | Yes |
 
-## Deployment (Vercel)
-
-### One-Click Deploy
-
-[![Deploy with Vercel](https://vercel.com/button)](https://vercel.com/new/clone?repository-url=https://github.com/your-username/ai-recipe-platform)
-
-### Manual Deploy
-
-1. Connect your GitHub repo to [Vercel](https://vercel.com)
-2. Add all environment variables in Vercel dashboard
-3. Deploy
-
-**Note:** Make sure to use MongoDB Atlas for production (not localhost).
-
 ## Author
 
 **Ketan Kamboj**
